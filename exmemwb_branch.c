@@ -13,6 +13,8 @@ u32 cmn()
     u32 opB = cpu_get_gpr(decoded.rN);
     u32 result = opA + opB;
 
+    cmp_in_cur_insn = 1;
+
     do_nflag(result);
     do_zflag(result);
     do_cflag(opA, opB, 0);
@@ -29,6 +31,8 @@ u32 cmp_i()
     u32 opB = ~zeroExtend32(decoded.imm);
     u32 result = opA + opB + 1;
 
+    cmp_in_cur_insn = 1;
+
     do_nflag(result);
     do_zflag(result);
     do_cflag(opA, opB, 1);
@@ -44,6 +48,8 @@ u32 cmp_r()
     u32 opA = cpu_get_gpr(decoded.rD);
     u32 opB = ~zeroExtend32(cpu_get_gpr(decoded.rM));
     u32 result = opA + opB + 1;
+
+    cmp_in_cur_insn = 1;
 
     do_nflag(result);
     do_zflag(result);
@@ -62,6 +68,8 @@ u32 tst()
     u32 opB = cpu_get_gpr(decoded.rM);
     u32 result = opA & opB;
     
+    cmp_in_cur_insn = 1;
+
     do_nflag(result);
     do_zflag(result);
     
@@ -74,9 +82,17 @@ u32 tst()
 u32 b()
 {
     u32 offset = signExtend32(decoded.imm << 1, 12);
-    
+
     diss_printf("B 0x%08X\n", offset);
-    
+
+    // Stop simulation on a branch-to-self, i.e., when offset == 0xfffffffc.
+    if (offset == 0xfffffffc)
+    {
+        fprintf(stderr, "Program exit (branch-to-self) after\n\t%lu ticks\n\t%lu instructions\n", cycleCount, insnCount);
+        // printStats();
+        sim_exit(0);
+    }
+
     u32 result = offset + cpu_get_pc();
     cpu_set_pc(result);
     takenBranch = 1;
@@ -89,7 +105,7 @@ u32 b_c()
 {
     diss_printf("Bcc 0x%08X\n", decoded.imm);
     u32 taken = 0;
-    
+
     switch(decoded.cond)
     {
 		case 0x0: // b eq, z set
@@ -166,18 +182,28 @@ u32 b_c()
             fprintf(stderr, "Error: Malformed instruction!");
             sim_exit(1);
     }
-    
+
     if(taken == 0)
     {
         return 1;
     }
-    
+
     u32 offset = signExtend32(decoded.imm << 1, 9);
     u32 pc = cpu_get_pc();
     u32 result = offset + pc;
+
+    // Bcc is 16 bits long at cpu_get_pc() - 4.  If cpu_get_pc() was NOT word aligned,
+    // a 32-bit fetch may have been issued and would need to be canceled.
+    if (((cpu_get_pc() & 0x2) == 0x2)
+        && (tracingActive && logAllEvents))
+        {
+            // nonword_taken_branches++;
+            branch_fetch_stall = 1;
+        }
+
     cpu_set_pc(result);
     takenBranch = 1;
-    
+
     return TIMING_BRANCH;
 }
 
@@ -197,7 +223,10 @@ u32 blx()
     cpu_set_lr(cpu_get_pc() - 0x2);
     cpu_set_pc(address);
     takenBranch = 1;
-    
+
+    // BLX may require an additional cycle: Use a separate counter.
+    blx_insns++;
+
     return TIMING_BRANCH;
 }
 
@@ -220,9 +249,12 @@ u32 bx()
         except_exit(address);
     else
         cpu_set_pc(address);
-    
+
     takenBranch = 1;
-    
+
+    // BX may require an additional cycle: Use a separate counter.
+    bx_insns++;
+
     return TIMING_BRANCH;
 }
 
@@ -233,12 +265,19 @@ u32 bl()
     u32 result = signExtend32(decoded.imm << 1, 25);
     
     diss_printf("bl 0x%08X\n", result);
-    
+
     result += cpu_get_pc();
+
+    // A word-aligned BL may cause a discarded fetch.  Count such cases.
+    if ((cpu_get_pc() & 0x2) == 0x0)
+        word_aligned_bl++;
     
     cpu_set_lr(cpu_get_pc());
     cpu_set_pc(result);
     takenBranch = 1;
+
+    // BL requires an additional cycle: Use a separate counter.
+    bl_insns++;
     
     return TIMING_BRANCH_LINK;
 }

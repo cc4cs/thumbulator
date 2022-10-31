@@ -5,17 +5,28 @@
 
 u16 insn;
 
+// Instruction statistics: 64 opcodes, up to 16 variants per opcode
+// (not all variants are used for all opcodes)
+u64 opcode_stats[64][16];
+u64 primary_opcode_stats[64];
+u64 last_opcode_stats[64][16];
+u64 last_primary_opcode_stats[64];
+
 #if HOOK_GPR_ACCESSES
-    u32 cpu_get_gpr(u32 gpr)
+    u32 cpu_get_gpr(char gpr)
     {
-        gprReadHooks[gpr]();
-        return cpu.gpr[gpr];
+        gprReadHooks[(int) gpr]();
+
+        // Track use-after-load stalls.
+        if (load_in_prev_insn && reg_loaded_in_prev_insn == gpr)
+          use_after_load_seen = 1;
+        return cpu.gpr[(int) gpr];
     }
 
-    void cpu_set_gpr(u32 gpr, u32 value)
+    void cpu_set_gpr(char gpr, u32 value)
     {
-        gprWriteHooks[gpr]();
-        cpu.gpr[gpr] = value;
+        gprWriteHooks[(int) gpr]();
+        cpu.gpr[(int) gpr] = value;
     }
 #endif
 
@@ -111,6 +122,8 @@ u32 (* executeJumpTable6[2])(void) = { \
 
 u32 entry6(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[6][(insn >> 9) & 0x1]++;
     return executeJumpTable6[(insn >> 9) & 0x1]();
 }
 
@@ -121,6 +134,8 @@ u32 (* executeJumpTable7[2])(void) = { \
 
 u32 entry7(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[7][(insn >> 9) & 0x1]++;
     return executeJumpTable7[(insn >> 9) & 0x1]();
 }
 
@@ -145,6 +160,8 @@ u32 (* executeJumpTable16[16])(void) = { \
 
 u32 entry16(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[16][(insn >> 6) & 0xF]++;
     return executeJumpTable16[(insn >> 6) & 0xF]();
 }
 
@@ -161,6 +178,8 @@ u32 (* executeJumpTable17[8])(void) = { \
 
 u32 entry17(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[17][(insn >> 7) & 0x7]++;
     return executeJumpTable17[(insn >> 7) & 0x7]();
 }
 
@@ -171,6 +190,8 @@ u32 (* executeJumpTable20[2])(void) = { \
 
 u32 entry20(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[20][(insn >> 9) & 0x1]++;
     return executeJumpTable20[(insn >> 9) & 0x1]();
 }
 
@@ -181,6 +202,8 @@ u32 (* executeJumpTable21[2])(void) = { \
 
 u32 entry21(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[21][(insn >> 9) & 0x1]++;
     return executeJumpTable21[(insn >> 9) & 0x1]();
 }
 
@@ -191,6 +214,8 @@ u32 (* executeJumpTable22[2])(void) = { \
 
 u32 entry22(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[22][(insn >> 9) & 0x1]++;
     return executeJumpTable22[(insn >> 9) & 0x1]();
 }
 
@@ -201,6 +226,8 @@ u32 (* executeJumpTable23[2])(void) = { \
 
 u32 entry23(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[23][(insn >> 9) & 0x1]++;
     return executeJumpTable23[(insn >> 9) & 0x1]();
 }
 
@@ -225,6 +252,8 @@ u32 (* executeJumpTable44[16])(void) = { \
 
 u32 entry44(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[44][(insn >> 6) & 0xF]++;
     return executeJumpTable44[(insn >> 6) & 0xF]();
 }
 
@@ -249,6 +278,8 @@ u32 (* executeJumpTable46[16])(void) = { \
 
 u32 entry46(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[46][(insn >> 6) & 0xF]++;
     return executeJumpTable46[(insn >> 6) & 0xF]();
 }
 
@@ -259,6 +290,8 @@ u32 (* executeJumpTable47[2])(void) = { \
 
 u32 entry47(void)
 {
+    // Increment per-opcode stats.
+    opcode_stats[47][(insn >> 9) & 0x1]++;
     return executeJumpTable47[(insn >> 9) & 0x1]();
 }
 
@@ -269,7 +302,7 @@ u32 entry55(void)
     
     if(insn == 0xDF01)
     {
-        printf("Program exit after\n\t%llu ticks\n\t%llu instructions\n", cycleCount, insnCount);
+        printf("Program exit after\n\t%lu ticks\n\t%lu instructions\n", cycleCount, insnCount);
         #if MEM_COUNT_INST
             printf("Loads: %u\nStores: %u\nCheckpoints: %u\n", load_count, store_count, cp_count);
         #endif
@@ -348,9 +381,13 @@ u32 (* executeJumpTable[64])() = { \
 
 void exwbmem(const u16 pInsn)
 {
+    // Insn count does not depend on tracing.
+    // if(tracingActive)
     ++insnCount;
     insn = pInsn;
-    
+
+    // Increment global opcode stats.
+    primary_opcode_stats[pInsn >> 10]++;
     unsigned int insnTicks = executeJumpTable[pInsn >> 10]();
     INCREMENT_CYCLES(insnTicks);
     

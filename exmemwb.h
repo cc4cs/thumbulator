@@ -31,6 +31,14 @@ struct SYSTICK {
 
 extern struct SYSTICK systick;
 
+// Instruction statistics: 64 opcodes, up to 16 variants per opcode
+// (not all variants are used for all opcodes)
+extern u64 opcode_stats[64][16];
+extern u64 primary_opcode_stats[64];
+// Last snapshot of the above
+extern u64 last_opcode_stats[64][16];
+extern u64 last_primary_opcode_stats[64];
+
 // Define bit fields of APSR
 #define FLAG_N_INDEX 31
 #define FLAG_Z_INDEX 30
@@ -43,10 +51,10 @@ extern struct SYSTICK systick;
 
 // GPR setters and getters
 #if HOOK_GPR_ACCESSES
-    u32 cpu_get_gpr(u32 gpr);
-    void cpu_set_gpr(u32 gpr, u32 value);
+    u32 cpu_get_gpr(char gpr);
+    void cpu_set_gpr(char gpr, u32 value);
 #else
-    #define cpu_get_gpr(x) cpu.gpr[x]
+    #define cpu_get_gpr(x) { if (load_in_prev_insn && reg_loaded_in_prev_insn == x) use_after_load_seen = 1; cpu.gpr[x] }
     #define cpu_set_gpr(x, y) cpu.gpr[x] = y
 #endif
 

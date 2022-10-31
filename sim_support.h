@@ -3,16 +3,19 @@
 
 #include <stdio.h>
 
-#define RAM_START           0x40000000
-#define RAM_SIZE            (1 << 23) // 8 MB
-#define RAM_ADDRESS_MASK    (((~0) << 23) ^ (~0))
-#define FLASH_START         0x0
-#define FLASH_SIZE          (1 << 23) // 8 MB
-#define FLASH_ADDRESS_MASK  (((~0) << 23) ^ (~0))
-#define CPU_FREQ            24000000
-#define MEMMAPIO_START      0x80000000
-#define MEMMAPIO_SIZE       (4*19)
-#define WATCHPOINT_ADDR     0x80000010
+#define RAM_START           0x20000000
+#define RAM_SIZE            (1 << 16) // 64KiB
+#define RAM_ADDRESS_MASK    (((~0) << 16) ^ (~0))
+#define FLASH_START         0x08000000
+#define FLASH_SIZE          (1 << 20) // 1 MiB
+#define FLASH_ADDRESS_MASK  (((~0) << 20) ^ (~0))
+#define CPU_FREQ            48000000
+#define MEMMAPIO_START      0x40000000
+#define MEMMAPIO_MAPPEDSIZE (4*18)      // Size of actual memory image
+#define MEMMAPIO_SIZE       0x08001800  // Size of MMIO address window in memory map
+#define M0PLUSPERIPHS_START 0xE0000000
+#define M0PLUSPERIPHS_SIZE  0x00100000
+#define WATCHPOINT_ADDR     0x40000010
 
 typedef __uint32_t u32;
 typedef __uint64_t u64;
@@ -25,6 +28,65 @@ typedef char bool;
 // Core CPU compenents
 extern u32 ram[RAM_SIZE >> 2];
 extern u32 flash[FLASH_SIZE >> 2];
+
+// Performance counter start/stop PC values.
+extern u32 trace_start_pc;
+extern u32 trace_stop_pc;
+
+// Performance counters
+extern u64 ram_data_reads;
+extern u64 ram_insn_reads;
+extern u64 ram_writes;
+extern u64 flash_data_reads;
+extern u64 flash_insn_reads;
+extern u64 flash_writes;
+extern u64 taken_branches;
+extern u64 nonword_branch_destinations;
+extern u64 nonword_branch_insns;
+extern u64 nonword_taken_branches;
+extern bool branch_fetch_stall; // Boolean to represent branch-induced stall/cancellation condition
+extern bool ram_access; // Boolean to mark a RAM request in the current decode cycle
+extern bool flash_access; // Boolean to mark a Flash request in the current decode cycle
+extern u64 arbitration_conflicts; // Count of potential RAM/Flash arbitration conflicts
+extern u64 branch_fetch_stalls; // Count of branch-induced fetch delays (caused by stalls and/or cancellations)
+extern bool data_access_in_cur_cycle, data_access_in_next_cycle, data_access_in_two_cycles, data_access_in_three_cycles;
+extern bool load_in_cur_insn, load_in_prev_insn, store_in_cur_insn, store_in_prev_insn, cmp_in_cur_insn;
+extern char reg_loaded_in_cur_insn, reg_loaded_in_prev_insn;
+extern bool use_after_load_seen;
+extern bool store_addr_reg_load_in_prev_insn;
+extern u64 load_after_load, load_after_store, store_after_load, store_after_store;
+extern u64 use_after_load_ld, use_after_load_st, use_after_load_alu, use_after_load_cmp;
+extern u64 burst_loads, burst_stores;
+extern u64 bl_insns, blx_insns, bx_insns;
+extern u64 pop_high_regs, pop_sp, pop_pc;
+extern u64 word_aligned_bl;
+
+#define SHIFT_ISSUED_DATA_ACCESSES \
+  { \
+    data_access_in_cur_cycle = data_access_in_next_cycle; \
+    data_access_in_next_cycle = data_access_in_two_cycles; \
+    data_access_in_two_cycles = data_access_in_three_cycles; \
+    data_access_in_three_cycles = 0; \
+  }
+#define FLUSH_ISSUED_DATA_ACCESSES \
+{ \
+  data_access_in_cur_cycle = 0; \
+  data_access_in_next_cycle = 0; \
+  data_access_in_two_cycles = 0; \
+  data_access_in_three_cycles = 0; \
+}
+// Prefetch buffering: none, 1-word direct-associative, or 3-word direct-associative buffer
+#define PREFETCH_MODE_NONE 0
+#define PREFETCH_MODE_WORD 1
+#define PREFETCH_MODE_BUFFER 2
+extern u32 prefetch_mode;
+// Enable differential results in start-stop mode.
+extern bool doTrace;
+extern bool tracingActive;
+extern bool logAllEvents;
+extern bool useCSVoutput;
+extern char *simulatingFilePath;
+
 extern bool takenBranch;    // Informs fetch that previous instruction caused a control flow change
 extern void sim_exit(int);  // All sim ends lead through here
 void cpu_reset();           // Resets the CPU according to the specification
@@ -37,7 +99,7 @@ char simStoreData(u32 address, u32 value);
 #define DISABLE_PROGRAM_PRINTING 1
 
 // Simulator debugging
-#define PRINT_INST 0                                    // diss_printf(): disassembly printing?
+#define PRINT_INST 1                                    // diss_printf(): disassembly printing?
 #define PRINT_ALL_STATE 0                               // Print all registers after each instruction? Used for comparing to original Thumbulator.
 #define PRINT_STATE_DIFF_INIT (0 & (PRINT_ALL_STATE))   // Print changed registers after each instruction?
 #define PRINT_STORES_WITH_STATE (0 & (PRINT_ALL_STATE)) // Print memory written with state updates?
@@ -51,7 +113,7 @@ char simStoreData(u32 address, u32 value);
 #define THUMB_CHECK 1                                   // Verify that the PC stays in thumb mode
 
 #define diff_printf(format, ...) do{ fprintf(stderr, "%08X:\t", cpu_get_pc() - 0x5); fprintf(stderr, format, __VA_ARGS__); } while(0)
-#define diss_printf(format, ...) do{ if (PRINT_INST) { fprintf(stderr, "%08X:\t", cpu_get_pc() - 0x5); fprintf(stderr, format, __VA_ARGS__); } } while(0)
+#define diss_printf(format, ...) do{ if (PRINT_INST && (tracingActive || logAllEvents) && doTrace) { fprintf(stderr, "%08X:\t", cpu_get_pc() - 0x5); fprintf(stderr, format, __VA_ARGS__); } } while(0)
 
 // Hooks to run code every time a GPR is accessed
 #define HOOK_GPR_ACCESSES 1         // Currently set to see if stack crosses heap
@@ -59,7 +121,7 @@ char simStoreData(u32 address, u32 value);
 // Macros for Ratchet
 #define PRINT_CHECKPOINTS 0                 // Print checkpoint info
 #define MEM_COUNT_INST 0                    // Track and report program loads, stores, and checkpoints
-#define PRINT_MEM_OPS 1                     // Prints detailed info for each program-generated memory access (Clank)
+#define PRINT_MEM_OPS 0                     // Prints detailed info for each program-generated memory access (Clank)
 #define INCREMENT_CYCLES(x) {\
   cycleCount += x;           \
   cyclesSinceReset += x;     \
@@ -102,13 +164,16 @@ extern u32 PRINT_STATE_DIFF;
   extern u32 cp_count;
 #endif
 #if HOOK_GPR_ACCESSES
-    void do_nothing(void);
-    void report_sp(void);
-    void (* gprReadHooks[16])(void);
-    void (* gprWriteHooks[16])(void);
+    extern void do_nothing(void);
+    extern void report_sp(void);
+    extern void (* gprReadHooks[16])(void);
+    extern void (* gprWriteHooks[16])(void);
 #endif
-char simValidMem(u32 address); // Interface for rsp (GDB) server
-
+extern char simValidMem(u32 address); // Interface for rsp (GDB) server
+extern void saveStats(void);
+extern void printStats(void);
+extern void printStatsCSV(void);
+extern void printStatsDelta(void);
 
 //struct MEMMAPIO {
 //  u32 *cycleCountLSB;

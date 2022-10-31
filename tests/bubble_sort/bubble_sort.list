@@ -1,0 +1,195 @@
+
+bubble_sort.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08000000 <hang-0x50>:
+ 8000000:	20010000 	.word	0x20010000
+ 8000004:	08000053 	.word	0x08000053
+ 8000008:	08000051 	.word	0x08000051
+ 800000c:	08000051 	.word	0x08000051
+ 8000010:	08000051 	.word	0x08000051
+ 8000014:	08000051 	.word	0x08000051
+ 8000018:	08000051 	.word	0x08000051
+ 800001c:	08000051 	.word	0x08000051
+ 8000020:	08000051 	.word	0x08000051
+ 8000024:	08000051 	.word	0x08000051
+ 8000028:	08000051 	.word	0x08000051
+ 800002c:	08000051 	.word	0x08000051
+ 8000030:	08000051 	.word	0x08000051
+ 8000034:	08000051 	.word	0x08000051
+ 8000038:	08000051 	.word	0x08000051
+ 800003c:	08000051 	.word	0x08000051
+ 8000040:	08000051 	.word	0x08000051
+ 8000044:	08000051 	.word	0x08000051
+ 8000048:	08000051 	.word	0x08000051
+ 800004c:	08000051 	.word	0x08000051
+
+08000050 <hang>:
+ 8000050:	e7fe      	b.n	8000050 <hang>
+
+08000052 <_start>:
+ 8000052:	f000 f82f 	bl	80000b4 <bubble_sort>
+ 8000056:	df01      	svc	1
+ 8000058:	e7fe      	b.n	8000058 <_start+0x6>
+	...
+
+0800005c <swap>:
+ 800005c:	b580      	push	{r7, lr}
+ 800005e:	b084      	sub	sp, #16
+ 8000060:	af00      	add	r7, sp, #0
+ 8000062:	0002      	movs	r2, r0
+ 8000064:	1dfb      	adds	r3, r7, #7
+ 8000066:	701a      	strb	r2, [r3, #0]
+ 8000068:	1dbb      	adds	r3, r7, #6
+ 800006a:	1c0a      	adds	r2, r1, #0
+ 800006c:	701a      	strb	r2, [r3, #0]
+ 800006e:	1dfb      	adds	r3, r7, #7
+ 8000070:	2200      	movs	r2, #0
+ 8000072:	569a      	ldrsb	r2, [r3, r2]
+ 8000074:	200f      	movs	r0, #15
+ 8000076:	183b      	adds	r3, r7, r0
+ 8000078:	490d      	ldr	r1, [pc, #52]	; (80000b0 <swap+0x54>)
+ 800007a:	5c8a      	ldrb	r2, [r1, r2]
+ 800007c:	701a      	strb	r2, [r3, #0]
+ 800007e:	1dbb      	adds	r3, r7, #6
+ 8000080:	2200      	movs	r2, #0
+ 8000082:	569a      	ldrsb	r2, [r3, r2]
+ 8000084:	1dfb      	adds	r3, r7, #7
+ 8000086:	781b      	ldrb	r3, [r3, #0]
+ 8000088:	061b      	lsls	r3, r3, #24
+ 800008a:	161b      	asrs	r3, r3, #24
+ 800008c:	4908      	ldr	r1, [pc, #32]	; (80000b0 <swap+0x54>)
+ 800008e:	5689      	ldrsb	r1, [r1, r2]
+ 8000090:	4a07      	ldr	r2, [pc, #28]	; (80000b0 <swap+0x54>)
+ 8000092:	54d1      	strb	r1, [r2, r3]
+ 8000094:	1dbb      	adds	r3, r7, #6
+ 8000096:	781b      	ldrb	r3, [r3, #0]
+ 8000098:	061b      	lsls	r3, r3, #24
+ 800009a:	161b      	asrs	r3, r3, #24
+ 800009c:	4a04      	ldr	r2, [pc, #16]	; (80000b0 <swap+0x54>)
+ 800009e:	1839      	adds	r1, r7, r0
+ 80000a0:	7809      	ldrb	r1, [r1, #0]
+ 80000a2:	54d1      	strb	r1, [r2, r3]
+ 80000a4:	46c0      	nop			; (mov r8, r8)
+ 80000a6:	46bd      	mov	sp, r7
+ 80000a8:	b004      	add	sp, #16
+ 80000aa:	bc80      	pop	{r7}
+ 80000ac:	bc01      	pop	{r0}
+ 80000ae:	4700      	bx	r0
+ 80000b0:	20000000 	.word	0x20000000
+
+080000b4 <bubble_sort>:
+ 80000b4:	b580      	push	{r7, lr}
+ 80000b6:	b082      	sub	sp, #8
+ 80000b8:	af00      	add	r7, sp, #0
+ 80000ba:	1cfb      	adds	r3, r7, #3
+ 80000bc:	2203      	movs	r2, #3
+ 80000be:	701a      	strb	r2, [r3, #0]
+ 80000c0:	1dbb      	adds	r3, r7, #6
+ 80000c2:	2200      	movs	r2, #0
+ 80000c4:	701a      	strb	r2, [r3, #0]
+ 80000c6:	e057      	b.n	8000178 <bubble_sort+0xc4>
+ 80000c8:	1d7b      	adds	r3, r7, #5
+ 80000ca:	2201      	movs	r2, #1
+ 80000cc:	701a      	strb	r2, [r3, #0]
+ 80000ce:	1d3b      	adds	r3, r7, #4
+ 80000d0:	22ff      	movs	r2, #255	; 0xff
+ 80000d2:	701a      	strb	r2, [r3, #0]
+ 80000d4:	1dfb      	adds	r3, r7, #7
+ 80000d6:	2200      	movs	r2, #0
+ 80000d8:	701a      	strb	r2, [r3, #0]
+ 80000da:	e02f      	b.n	800013c <bubble_sort+0x88>
+ 80000dc:	1dfb      	adds	r3, r7, #7
+ 80000de:	781b      	ldrb	r3, [r3, #0]
+ 80000e0:	061b      	lsls	r3, r3, #24
+ 80000e2:	161b      	asrs	r3, r3, #24
+ 80000e4:	4a2b      	ldr	r2, [pc, #172]	; (8000194 <bubble_sort+0xe0>)
+ 80000e6:	56d2      	ldrsb	r2, [r2, r3]
+ 80000e8:	1dfb      	adds	r3, r7, #7
+ 80000ea:	781b      	ldrb	r3, [r3, #0]
+ 80000ec:	061b      	lsls	r3, r3, #24
+ 80000ee:	161b      	asrs	r3, r3, #24
+ 80000f0:	3301      	adds	r3, #1
+ 80000f2:	4928      	ldr	r1, [pc, #160]	; (8000194 <bubble_sort+0xe0>)
+ 80000f4:	56cb      	ldrsb	r3, [r1, r3]
+ 80000f6:	429a      	cmp	r2, r3
+ 80000f8:	dd15      	ble.n	8000126 <bubble_sort+0x72>
+ 80000fa:	1dfb      	adds	r3, r7, #7
+ 80000fc:	781b      	ldrb	r3, [r3, #0]
+ 80000fe:	3301      	adds	r3, #1
+ 8000100:	061b      	lsls	r3, r3, #24
+ 8000102:	0e1b      	lsrs	r3, r3, #24
+ 8000104:	061b      	lsls	r3, r3, #24
+ 8000106:	161a      	asrs	r2, r3, #24
+ 8000108:	1dfb      	adds	r3, r7, #7
+ 800010a:	781b      	ldrb	r3, [r3, #0]
+ 800010c:	061b      	lsls	r3, r3, #24
+ 800010e:	161b      	asrs	r3, r3, #24
+ 8000110:	0011      	movs	r1, r2
+ 8000112:	0018      	movs	r0, r3
+ 8000114:	f7ff ffa2 	bl	800005c <swap>
+ 8000118:	1d7b      	adds	r3, r7, #5
+ 800011a:	2200      	movs	r2, #0
+ 800011c:	701a      	strb	r2, [r3, #0]
+ 800011e:	1d3b      	adds	r3, r7, #4
+ 8000120:	1dfa      	adds	r2, r7, #7
+ 8000122:	7812      	ldrb	r2, [r2, #0]
+ 8000124:	701a      	strb	r2, [r3, #0]
+ 8000126:	1dfb      	adds	r3, r7, #7
+ 8000128:	781b      	ldrb	r3, [r3, #0]
+ 800012a:	061b      	lsls	r3, r3, #24
+ 800012c:	161b      	asrs	r3, r3, #24
+ 800012e:	061b      	lsls	r3, r3, #24
+ 8000130:	0e1b      	lsrs	r3, r3, #24
+ 8000132:	3301      	adds	r3, #1
+ 8000134:	061b      	lsls	r3, r3, #24
+ 8000136:	0e1a      	lsrs	r2, r3, #24
+ 8000138:	1dfb      	adds	r3, r7, #7
+ 800013a:	701a      	strb	r2, [r3, #0]
+ 800013c:	1dfa      	adds	r2, r7, #7
+ 800013e:	1cfb      	adds	r3, r7, #3
+ 8000140:	7812      	ldrb	r2, [r2, #0]
+ 8000142:	0612      	lsls	r2, r2, #24
+ 8000144:	1612      	asrs	r2, r2, #24
+ 8000146:	781b      	ldrb	r3, [r3, #0]
+ 8000148:	061b      	lsls	r3, r3, #24
+ 800014a:	161b      	asrs	r3, r3, #24
+ 800014c:	429a      	cmp	r2, r3
+ 800014e:	dbc5      	blt.n	80000dc <bubble_sort+0x28>
+ 8000150:	1d7b      	adds	r3, r7, #5
+ 8000152:	781b      	ldrb	r3, [r3, #0]
+ 8000154:	061b      	lsls	r3, r3, #24
+ 8000156:	161b      	asrs	r3, r3, #24
+ 8000158:	d115      	bne.n	8000186 <bubble_sort+0xd2>
+ 800015a:	1cfb      	adds	r3, r7, #3
+ 800015c:	1d3a      	adds	r2, r7, #4
+ 800015e:	7812      	ldrb	r2, [r2, #0]
+ 8000160:	701a      	strb	r2, [r3, #0]
+ 8000162:	1dbb      	adds	r3, r7, #6
+ 8000164:	781b      	ldrb	r3, [r3, #0]
+ 8000166:	061b      	lsls	r3, r3, #24
+ 8000168:	161b      	asrs	r3, r3, #24
+ 800016a:	061b      	lsls	r3, r3, #24
+ 800016c:	0e1b      	lsrs	r3, r3, #24
+ 800016e:	3301      	adds	r3, #1
+ 8000170:	061b      	lsls	r3, r3, #24
+ 8000172:	0e1a      	lsrs	r2, r3, #24
+ 8000174:	1dbb      	adds	r3, r7, #6
+ 8000176:	701a      	strb	r2, [r3, #0]
+ 8000178:	1dbb      	adds	r3, r7, #6
+ 800017a:	781b      	ldrb	r3, [r3, #0]
+ 800017c:	061b      	lsls	r3, r3, #24
+ 800017e:	161b      	asrs	r3, r3, #24
+ 8000180:	2b03      	cmp	r3, #3
+ 8000182:	dda1      	ble.n	80000c8 <bubble_sort+0x14>
+ 8000184:	e000      	b.n	8000188 <bubble_sort+0xd4>
+ 8000186:	46c0      	nop			; (mov r8, r8)
+ 8000188:	46c0      	nop			; (mov r8, r8)
+ 800018a:	46bd      	mov	sp, r7
+ 800018c:	b002      	add	sp, #8
+ 800018e:	bc80      	pop	{r7}
+ 8000190:	bc01      	pop	{r0}
+ 8000192:	4700      	bx	r0
+ 8000194:	20000000 	.word	0x20000000

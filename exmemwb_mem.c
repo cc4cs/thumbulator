@@ -24,12 +24,23 @@ u32 ldm()
             cpu_set_gpr(i, data);
             address += 4;
             ++numLoaded;
+            // If there will be a load-use dependency, it will be
+            // on the last register to be loaded.
+            reg_loaded_in_cur_insn = i;
         }
     }
+
+    // Update the burst load counter.
+    burst_loads += numLoaded;
     
     if(rNWritten == 0)
+    {
         cpu_set_gpr(decoded.rN, address);
+        // There's no delay constraint on the address.
+        // reg_loaded_in_cur_insn = decoded.rN;
+    }
     
+    load_in_cur_insn = 1;
     return 1 + numLoaded;
 }
 
@@ -40,7 +51,11 @@ u32 stm()
     
     u32 numStored = 0;
     u32 address = cpu_get_gpr(decoded.rN);
-    
+
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     for(int i = 0; i < 8; ++i)
     {
         int mask = 1 << i;
@@ -58,9 +73,12 @@ u32 stm()
             ++numStored;
         }
     }
-    
+
+    // Update the burst store counter.
+    burst_stores += numStored;
+
     cpu_set_gpr(decoded.rN, address);
-    
+    store_in_cur_insn = 1;
     return 1 + numStored;
 }
 
@@ -73,7 +91,19 @@ u32 pop()
     
     u32 numLoaded = 0;
     u32 address = cpu_get_sp();
-    
+
+    if (decoded.reg_list & 0xf0)
+        // Poppping high regs (r4-r7)
+        pop_high_regs++;
+
+    if (decoded.reg_list & (1 << 14))
+        // Popping SP.
+        pop_sp++;
+
+    if (decoded.reg_list & (1 << 15))
+        // Popping PC (previously pushed as LR).
+        pop_pc++;
+
     for(int i = 0; i < 16; ++i)
     {
         int mask = 1 << i;
@@ -82,6 +112,8 @@ u32 pop()
             u32 data = 0;
             simLoadData(address, &data);
             cpu_set_gpr(i, data);
+            reg_loaded_in_cur_insn = i;
+            load_in_cur_insn = 1;
             ++numLoaded;
             if(i == 15)
                 takenBranch = 1;
@@ -90,11 +122,21 @@ u32 pop()
         
         // Skip constant 0s
         if(i == 7)
+        {
             i = 14;
+            reg_loaded_in_cur_insn = 14;
+            load_in_cur_insn = 1;
+        }
     }
-    
+
+    // Update the count of burst loads.
+    burst_loads += numLoaded;
+
     cpu_set_sp(address);
-    
+
+    // Assume there are no outstanding data accesses after a pop.
+    FLUSH_ISSUED_DATA_ACCESSES;
+
     return 1 + numLoaded + takenBranch ? TIMING_PC_UPDATE : 0;
 }
 
@@ -105,7 +147,11 @@ u32 push()
     
     u32 numStored = 0;
     u32 address = cpu_get_sp();
-    
+
+    // Track uses of previously loaded reg in store address.
+    if (14 == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     for(int i = 14; i >= 0; --i)
     {
         int mask = 1 << i;
@@ -121,9 +167,12 @@ u32 push()
         if(i == 14)
             i = 8;
     }
-    
+
+    // Update the count of burst stores.
+    burst_stores += numStored;
+
     cpu_set_sp(address);
-    
+
     return 1 + numStored;
 }
 
@@ -143,7 +192,9 @@ u32 ldr_i()
     simLoadData(effectiveAddress, &result);
     
     cpu_set_gpr(decoded.rD, result);
-    
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
+
     return TIMING_MEM;
 }
 
@@ -160,6 +211,8 @@ u32 ldr_sp()
     simLoadData(effectiveAddress, &result);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -177,6 +230,8 @@ u32 ldr_lit()
     simLoadData(effectiveAddress, &result);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -194,6 +249,8 @@ u32 ldr_r()
     simLoadData(effectiveAddress, &result);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -201,7 +258,7 @@ u32 ldr_r()
 // LDRB - Load byte from offset from register
 u32 ldrb_i()
 {
-	diss_printf("ldrb r%u, [r%u, #0x%X]\n", decoded.rD, decoded.rN, decoded.imm);
+    diss_printf("ldrb r%u, [r%u, #0x%X]\n", decoded.rD, decoded.rN, decoded.imm);
     
 	u32 base = cpu_get_gpr(decoded.rN);
     u32 offset = zeroExtend32(decoded.imm);
@@ -228,6 +285,8 @@ u32 ldrb_i()
     result = zeroExtend32(result & 0xFF);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -262,6 +321,8 @@ u32 ldrb_r()
     result = zeroExtend32(result & 0xFF);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -291,6 +352,8 @@ u32 ldrh_i()
     result = zeroExtend32(result & 0xFFFF);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -320,6 +383,8 @@ u32 ldrh_r()
     result = zeroExtend32(result & 0xFFFF);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -354,6 +419,8 @@ u32 ldrsb_r()
     result = signExtend32(result & 0xFF, 8);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -382,6 +449,8 @@ u32 ldrsh_r()
     result = signExtend32(result & 0xFFFF, 16);
     
     cpu_set_gpr(decoded.rD, result);
+    reg_loaded_in_cur_insn = decoded.rD;
+    load_in_cur_insn = 1;
 
     return TIMING_MEM;
 }
@@ -397,11 +466,16 @@ u32 str_i()
     u32 offset = zeroExtend32(decoded.imm << 2);
     u32 effectiveAddress = base + offset;
     
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     simStoreData(effectiveAddress, cpu_get_gpr(decoded.rD));
     
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddress, cpu_get_gpr(decoded.rD));
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -415,11 +489,16 @@ u32 str_sp()
     u32 offset = zeroExtend32(decoded.imm << 2);
     u32 effectiveAddress = base + offset;
     
+    // Track uses of previously loaded reg in store address.
+    if (14 == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     simStoreData(effectiveAddress, cpu_get_gpr(decoded.rD));
     
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddress, cpu_get_gpr(decoded.rD));
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -433,11 +512,17 @@ u32 str_r()
     u32 offset = cpu_get_gpr(decoded.rM);
     u32 effectiveAddress = base + offset;
     
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn
+        || decoded.rM == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     simStoreData(effectiveAddress, cpu_get_gpr(decoded.rD));
     
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddress, cpu_get_gpr(decoded.rD));
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -456,6 +541,10 @@ u32 strb_i()
     u32 orig;
     simLoadData_internal(effectiveAddressWordAligned, &orig, 1);
     
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     // Select the correct byte
     switch (effectiveAddress & 0x3) {
         case 0:
@@ -476,6 +565,7 @@ u32 strb_i()
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddressWordAligned, orig);
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -494,6 +584,11 @@ u32 strb_r()
     u32 orig;
     simLoadData_internal(effectiveAddressWordAligned, &orig, 1);
     
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn
+        || decoded.rM == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     // Select the correct byte
     switch (effectiveAddress & 0x3) {
         case 0:
@@ -514,6 +609,7 @@ u32 strb_r()
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddressWordAligned, orig);
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
@@ -532,6 +628,10 @@ u32 strh_i()
     u32 orig;
     simLoadData_internal(effectiveAddressWordAligned, &orig, 1);
     
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     // Select the correct byte
     switch (effectiveAddress & 0x2) {
         case 0:
@@ -540,13 +640,14 @@ u32 strh_i()
         default:
             orig = (orig & 0x0000FFFF) | (data << 16);
     }
-    
+
     simStoreData(effectiveAddressWordAligned, orig);
-    
+
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddressWordAligned, orig);
     #endif
-    
+    store_in_cur_insn = 1;
+
     return TIMING_MEM;
 }
 
@@ -560,10 +661,15 @@ u32 strh_r()
     u32 effectiveAddress = base + offset;
     u32 effectiveAddressWordAligned = effectiveAddress & ~0x3;
     u32 data = cpu_get_gpr(decoded.rD) & 0xFFFF;
-    
+
     u32 orig;
     simLoadData_internal(effectiveAddressWordAligned, &orig, 1);
-    
+
+    // Track uses of previously loaded reg in store address.
+    if (decoded.rN == reg_loaded_in_prev_insn
+        || decoded.rM == reg_loaded_in_prev_insn)
+        store_addr_reg_load_in_prev_insn = 1;
+
     // Select the correct byte
     switch (effectiveAddress & 0x2) {
         case 0:
@@ -578,6 +684,7 @@ u32 strh_r()
     #if PRINT_STORES_WITH_STATE
         printf("write: %08X %08X\n", effectiveAddressWordAligned, orig);
     #endif
+    store_in_cur_insn = 1;
     
     return TIMING_MEM;
 }
